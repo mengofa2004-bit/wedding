@@ -1,24 +1,21 @@
 const express = require('express');
 const fetch   = require('node-fetch');
 const path    = require('path');
+const fs      = require('fs');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Google Apps Script URL — берётся из переменной окружения Railway
 const SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL || '';
 
-// Парсим тело запроса
+// Логируем где лежат файлы (для отладки)
+console.log('__dirname:', __dirname);
+console.log('index.html exists:', fs.existsSync(path.join(__dirname, 'index.html')));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Раздаём статику (html, css, js, images)
-app.use(express.static(path.join(__dirname)));
-
-// ── RSVP API ──────────────────────────────────────────────
-// Фронтенд отправляет POST /api/rsvp
-// Сервер проксирует запрос в Google Apps Script
-// Гостям VPN не нужен — запрос идёт с сервера Railway
+// ── RSVP API — должен быть ДО статики ──
 app.post('/api/rsvp', async (req, res) => {
   try {
     const { name, will_come } = req.body;
@@ -31,16 +28,14 @@ app.post('/api/rsvp', async (req, res) => {
       return res.json({ status: 'error', message: 'GOOGLE_SCRIPT_URL не задан на сервере' });
     }
 
-    // Формируем тело запроса для Google Apps Script
     const params = new URLSearchParams();
     params.append('name',      name.trim());
     params.append('will_come', will_come.trim());
 
     const response = await fetch(SCRIPT_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:    params.toString(),
-      // Следуем редиректам (Google Apps Script делает редирект)
+      method:   'POST',
+      headers:  { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:     params.toString(),
       redirect: 'follow'
     });
 
@@ -53,7 +48,13 @@ app.post('/api/rsvp', async (req, res) => {
   }
 });
 
-// Все остальные GET → index.html
+// ── Статика: css, js, images, fonts ──
+app.use('/css',    express.static(path.join(__dirname, 'css')));
+app.use('/js',     express.static(path.join(__dirname, 'js')));
+app.use('/images', express.static(path.join(__dirname, 'images')));
+app.use('/fonts',  express.static(path.join(__dirname, 'fonts')));
+
+// ── Все остальные запросы → index.html ──
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
